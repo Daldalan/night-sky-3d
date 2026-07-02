@@ -42,6 +42,20 @@
     line-height: 1.5;
   }
 
+  /* 패널 헤더(드래그 핸들 + 최소화) */
+  .ph { display: flex; align-items: center; gap: 7px; cursor: grab;
+    user-select: none; touch-action: none; margin: 0 0 10px; }
+  .ph:active { cursor: grabbing; }
+  .ph .grip { color: var(--muted); font-size: 13px; }
+  .ph .pt { font-size: 13px; font-weight: 700; letter-spacing: .3px; flex: 1; white-space: nowrap; }
+  .ph .pmin { width: 24px; height: 24px; padding: 0; border-radius: 7px; flex: 0 0 24px;
+    display: flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; }
+  .panel.collapsed { padding: 6px 10px; width: auto !important; max-width: none !important; }
+  .panel.collapsed > :not(.ph) { display: none !important; }
+  .panel.collapsed .ph { margin: 0; }
+  #timePanel .ph { margin: 0; }
+  #timePanel .ph .pt { flex: 0 0 auto; }
+
   #infoPanel { top: 14px; left: 14px; max-width: 280px; }
   #infoPanel h1 {
     margin: 0 0 8px; font-size: 16px; letter-spacing: .3px;
@@ -117,10 +131,13 @@
   #help b { color: var(--text); }
   .credit { opacity: .55; font-size: 11px; margin-top: 6px; }
   @media (max-width: 720px){
-    #ctrlPanel { width: 220px; }
-    #infoPanel { max-width: 210px; }
-    #offset { width: 130px; }
-    #help { display:none; }
+    .panel { font-size: 12px; padding: 10px 12px; }
+    #ctrlPanel { width: 208px; top: 10px; right: 10px; }
+    #infoPanel { max-width: 200px; top: 10px; left: 10px; }
+    #timePanel { flex-wrap: wrap; justify-content: center; max-width: 94vw;
+      bottom: 10px; gap: 8px; padding: 8px 10px; }
+    #offset { width: 130px; flex: 1 1 120px; }
+    #help { display: none; }
   }
 </style>
 </head>
@@ -128,7 +145,6 @@
 <div id="app"></div>
 
 <div id="infoPanel" class="panel">
-  <h1><span class="dot"></span> 밤하늘 천문대</h1>
   <div class="stat"><span>관측지</span><b id="locName">서울</b></div>
   <div class="stat"><span>좌표</span><b id="locCoord">37.6°N 127.0°E</b></div>
   <div class="stat"><span>지방시(근사)</span><b id="localTime">--:--</b></div>
@@ -139,7 +155,6 @@
 </div>
 
 <div id="ctrlPanel" class="panel">
-  <h2>관측 위치</h2>
   <div class="field">
     <label>지구본에서 선택 — 드래그 회전 · 클릭 선택</label>
     <div id="globeBox"><div id="globeHint">🌍 클릭한 지점이 관측지가 됩니다</div></div>
@@ -1205,6 +1220,42 @@ $('nowBtn').addEventListener('click', ()=>{ offset.value=0; simTime=Date.now(); 
 $('minus').addEventListener('click', ()=>{ offset.value=clamp(parseFloat(offset.value)-1,-24,24); setOffsetHours(parseFloat(offset.value)); });
 $('plus').addEventListener('click', ()=>{ offset.value=clamp(parseFloat(offset.value)+1,-24,24); setOffsetHours(parseFloat(offset.value)); });
 $('speed').addEventListener('change', e=>{ speed=parseFloat(e.target.value); });
+
+/* --- 패널 최소화 & 드래그 이동 --- */
+let panelZ=30;
+function setupPanel(id, title, startCollapsed){
+  const p=$(id);
+  const ph=document.createElement('div'); ph.className='ph';
+  ph.innerHTML=`<span class="grip">⠿</span><span class="pt">${title}</span><button class="pmin" title="최소화/펼치기">−</button>`;
+  p.insertBefore(ph, p.firstChild);
+  const btn=ph.querySelector('.pmin');
+  const setCol=c=>{ p.classList.toggle('collapsed', c); btn.textContent=c?'+':'−'; };
+  btn.addEventListener('click', e=>{ e.stopPropagation(); setCol(!p.classList.contains('collapsed')); });
+  if(startCollapsed) setCol(true);
+  // 헤더를 잡고 드래그하면 패널 이동 (화면 밖으로 못 나가게 클램프)
+  let drag=false, sx=0, sy=0, ox=0, oy=0;
+  ph.addEventListener('pointerdown', e=>{
+    if(e.target===btn) return;
+    p.style.zIndex=++panelZ;                     // 잡은 패널을 맨 위로
+    const r=p.getBoundingClientRect();
+    p.style.left=r.left+'px'; p.style.top=r.top+'px';
+    p.style.right='auto'; p.style.bottom='auto'; p.style.transform='none';
+    drag=true; sx=e.clientX; sy=e.clientY; ox=r.left; oy=r.top;
+    try{ ph.setPointerCapture(e.pointerId); }catch(_){}
+  });
+  ph.addEventListener('pointermove', e=>{
+    if(!drag) return;
+    p.style.left=clamp(ox+e.clientX-sx, 2, innerWidth-52)+'px';
+    p.style.top =clamp(oy+e.clientY-sy, 2, innerHeight-34)+'px';
+  });
+  ph.addEventListener('pointerup', ()=>{ drag=false; });
+  return setCol;
+}
+const isMobileUI = matchMedia('(max-width: 720px)').matches;
+setupPanel('infoPanel','🌌 밤하늘 천문대', isMobileUI);
+setupPanel('ctrlPanel','🌍 관측 위치', isMobileUI);
+setupPanel('timePanel','⏱ 시간', isMobileUI);
+setupPanel('help','❔ 조작법', false);
 
 addEventListener('resize', ()=>{
   camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
